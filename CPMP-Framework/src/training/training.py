@@ -1,3 +1,4 @@
+
 from torch.utils.data import random_split, DataLoader
 import torch
 import os
@@ -154,14 +155,15 @@ def train(model, epochs, dataset, train_size, test_size, batch_size, learning_ra
     model_scorer = ModelScorer(model)
 
     def print_epoch_results(epoch: int, train_metrics: EpochMetrics, val_metrics: EpochMetrics):
-        print(f'{'\n' if epoch == 1 else ''}Epoch {epoch}/{epochs}')
+        nl = '\n' if epoch == 1 else ''
+        print(f"{nl}Epoch {epoch}/{epochs}")
         print(f"    Average - Train Loss: {loss_function.format(train_metrics.get_last_value(loss_function))}", end='')
         print(f" | Val Loss: {loss_function.format(val_metrics.get_last_value(loss_function))}")
 
         for i, metric in enumerate(val_metrics.metrics):
             if metric == loss_function: continue
             value = val_metrics.get_last_value(metric)
-            print(f'{' | ' if i > 0 else '    '}{metric.name}: {metric.format(value)}', end='')
+            print(f" {' | ' if i > 0 else '    '}{metric.name}: {metric.format(value)}", end='')
         print()
 
     train_metrics, val_metrics = _train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_function, print_epoch_results, model_scorer, patience, metrics, device)
