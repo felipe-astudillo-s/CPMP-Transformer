@@ -7,4 +7,4 @@ DATASETS_FOLDER = PROJECT_ROOT / "datasets"
 MODELS_FOLDER = PROJECT_ROOT / "models"
 HYPERPARAMETERS_FOLDER = MODELS_FOLDER / "hyperparameters"
 
-FRG_PATH = PROJECT_ROOT / "src" / "frg"
+FRG_PATH = PROJECT_ROOT / "Codigo_C_solver" / "frg"
