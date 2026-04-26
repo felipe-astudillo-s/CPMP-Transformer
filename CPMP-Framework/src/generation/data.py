@@ -11,6 +11,7 @@ from functools import partial
 
 def greedy(layout, H, max_steps):
     pid = os.getpid()
+    os.makedirs(INSTANCE_FOLDER, exist_ok=True)
     filepath = INSTANCE_FOLDER / f"tmp_{pid}.txt"
 
     try:
