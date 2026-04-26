@@ -7,6 +7,7 @@ import json
 from settings import MODELS_FOLDER, HYPERPARAMETERS_FOLDER
 from torch.amp import GradScaler, autocast
 from training.metrics import *
+import torch.nn.functional as F
 import random
     
 class ModelScorer:
@@ -87,17 +88,67 @@ def val_epoch(model, val_loader, loss_function, metrics, device):
 
     return loss, values
 
+def pad_batch_collate(batch):
+    """
+    Empareja tableros de diferentes tamaños (H, S) en un solo lote y
+    re-mapea las etiquetas de movimientos al nuevo tamaño.
+    """
+    max_S = max(item[0].shape[0] for item in batch)
+    max_H = max(item[0].shape[1] for item in batch)
+    
+    S_padded_list, X_padded_list, Y_padded_list = [], [], []
+    
+    for S, X, Y in batch:
+        S_len, H_len, _ = S.shape
+        pad_S = max_S - S_len
+        pad_H = max_H - H_len
+        
+        # 1. Rellenar la matriz S (Espacios vacíos = -1.0)
+        S_pad = F.pad(S, (0, 0, 0, pad_H, 0, pad_S), value=-1.0)
+        
+        # 2. Rellenar vector X (Características vacías = 0.0)
+        X_pad = F.pad(X, (0, 0, 0, pad_S), value=0.0)
+        
+        # 3. RE-MAPEO DE Y (El truco maestro)
+        # Convertimos Y (plano) a matriz (S_len x S_len)
+        Y_mat = torch.zeros(S_len, S_len, dtype=Y.dtype, device=Y.device)
+        idx = torch.arange(S_len)
+        mask = idx.unsqueeze(1) != idx.unsqueeze(0) # Ignorar diagonal
+        Y_mat[mask] = Y.to(Y_mat.dtype)
+        
+        # Rellenamos la matriz de movimientos con 0 (movimientos a pilas falsas son imposibles)
+        Y_mat_pad = F.pad(Y_mat, (0, pad_S, 0, pad_S), value=0)
+        
+        # Volvemos a aplanar la matriz basada en max_S
+        idx_max = torch.arange(max_S)
+        mask_max = idx_max.unsqueeze(1) != idx_max.unsqueeze(0)
+        Y_pad = Y_mat_pad[mask_max]
+        
+        S_padded_list.append(S_pad)
+        X_padded_list.append(X_pad)
+        Y_padded_list.append(Y_pad)
+        
+    return torch.stack(S_padded_list), torch.stack(X_padded_list), torch.stack(Y_padded_list)
+
 def _train(model, epochs, train_set, test_set, batch_size, learning_rate, weight_decay, loss_function, print_epoch_results, model_scorer, patience, metrics, device): 
-    num_workers = os.cpu_count()
+    num_workers = (os.cpu_count()) // 2 if os.cpu_count() > 1 else 0
+
     train_loader = DataLoader(
         train_set, 
         batch_size=batch_size, 
         num_workers=num_workers,
         pin_memory=(device.type == "cuda"),
         prefetch_factor=2,
-        persistent_workers=True
+        persistent_workers=True,
+        collate_fn=pad_batch_collate 
     )
-    test_loader = DataLoader(test_set, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(
+        test_set, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers,
+        collate_fn=pad_batch_collate
+    )
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     scaler = GradScaler(device.type)

@@ -251,3 +251,153 @@ class EnrichedStackMatrix5DAdapter(EnrichedStackMatrixAdapter):
         # 2. Obtenemos nuestro nuevo X de 5 dimensiones
         X = EnrichedStackMatrix5DAdapter.get_X(layout, H)
         return S, X
+
+
+class TacticalStackMatrixAdapter(LayoutDataAdapter):
+    """
+    Adaptador táctico basado en heurísticas clásicas de CPMP.
+
+    Reutiliza la matriz S del StackMatrix4DAdapter (valor normalizado + flag de
+    bloqueo) y expone un vector X de 5 dimensiones orientado a decisión táctica:
+
+        [0] Sorted Status  (Caserta-Voß base):
+                1.0 si la pila NO está vacía y está completamente ordenada.
+                0.0 si hay desorden o si la pila está vacía.
+        [1] Free Space (Espacio disponible absoluto):
+                H - len(stack). Reemplaza la antigua métrica de % de llenado.
+        [2] Misplaced Count (Caserta-Voß):
+                # de contenedores estorbo en la pila (enteros, valor absoluto).
+        [3] Top Element (Tierney-Pacino, poda):
+                Valor normalizado del contenedor superior (0-1). Si la pila está
+                vacía, se asigna 1.0 (equivalente a "infinito": acepta todo).
+        [4] Top Move Cost (Araya, lower-bound):
+                0.0 si la pila ya está ordenada (no hay que moverla).
+                1.0 si existe al menos un destino con espacio cuyo top >= top
+                    origen (movimiento limpio posible).
+                2.0 si todos los destinos con espacio tienen top < top origen
+                    (obligatorio hacer un movimiento sucio).
+
+    NOTA: Este adaptador es puramente aditivo. No modifica ni sobreescribe a
+    ningún adaptador existente — los modelos V0..V9 siguen funcionando igual.
+    """
+
+    def __init__(self):
+        super().__init__({
+            "S": np.float32,
+            "X": np.float32
+        })
+
+    @staticmethod
+    def compute_misplaced_count(stack):
+        """
+        Cuenta contenedores mal ubicados (heurística base de Caserta-Voß).
+
+        Un contenedor en altura j>0 está mal ubicado si existe al menos un
+        contenedor por debajo (alturas 0..j-1) con valor estrictamente menor
+        (i.e., con mayor prioridad, debería salir antes).
+        """
+        count = 0
+        min_so_far = float('inf')
+        for val in stack:
+            if val > min_so_far:
+                count += 1
+            if val < min_so_far:
+                min_so_far = val
+        return count
+
+    @staticmethod
+    def compute_top_move_cost(layout: Layout, i: int, H: int):
+        """
+        Calcula el Top Move Cost (lower-bound de Araya) para la pila i.
+
+        Devuelve:
+            0.0 -> pila ya ordenada, no requiere movimiento.
+            1.0 -> existe al menos un destino válido para un movimiento limpio.
+            2.0 -> sólo hay movimientos sucios disponibles.
+        """
+        if layout.is_sorted_stack(i):
+            return 0.0
+
+        stack = layout.stacks[i]
+        if len(stack) == 0:
+            # Caso degenerado: pila vacía marcada como no ordenada (no debería
+            # ocurrir con la convención actual, pero por robustez devolvemos 0).
+            return 0.0
+
+        top_src = stack[-1]
+
+        for j in range(len(layout.stacks)):
+            if j == i:
+                continue
+            dest_stack = layout.stacks[j]
+            # Debe haber espacio físico disponible
+            if len(dest_stack) >= H:
+                continue
+            # Pila vacía: top "infinito", siempre es destino limpio
+            if len(dest_stack) == 0:
+                return 1.0
+            top_dest = dest_stack[-1]
+            if top_dest >= top_src:
+                return 1.0
+
+        return 2.0
+
+    @staticmethod
+    def get_X(layout: Layout, H: int, max_val: float):
+        """
+        Construye el vector X (S_len x 5) con las 5 dimensiones tácticas.
+
+        `max_val` se recibe como parámetro para garantizar la misma
+        normalización que la usada en la matriz S (StackMatrix4DAdapter).
+        """
+        num_stacks = len(layout.stacks)
+        X = np.zeros((num_stacks, 5), dtype=np.float32)
+
+        for i in range(num_stacks):
+            stack = layout.stacks[i]
+            stack_len = len(stack)
+
+            # [0] Sorted Status
+            if stack_len == 0:
+                X[i][0] = 0.0
+            else:
+                X[i][0] = 1.0 if layout.is_sorted_stack(i) else 0.0
+
+            # [1] Free Space (absoluto)
+            X[i][1] = float(H - stack_len)
+
+            # [2] Misplaced Count (absoluto)
+            X[i][2] = float(
+                TacticalStackMatrixAdapter.compute_misplaced_count(stack)
+            )
+
+            # [3] Top Element (normalizado, 1.0 si vacía)
+            if stack_len == 0:
+                X[i][3] = 1.0
+            else:
+                X[i][3] = stack[-1] / max_val
+
+            # [4] Top Move Cost
+            X[i][4] = TacticalStackMatrixAdapter.compute_top_move_cost(
+                layout, i, H
+            )
+
+        return X
+
+    @staticmethod
+    def layout_2_vec(layout: Layout, H: int):
+        # 1. Matriz S reutilizada del adaptador 4D (valor normalizado + bloqueo)
+        S = StackMatrix4DAdapter.layout_2_vec(layout, H)[0]
+
+        # 2. Normalización consistente: mismo max_val que StackMatrix4DAdapter
+        all_vals = [c for s in layout.stacks for c in s]
+        max_val = max(all_vals) if all_vals else 1
+
+        # 3. Vector X táctico de 5 dimensiones
+        X = TacticalStackMatrixAdapter.get_X(layout, H, max_val)
+        return S, X
+
+    def add(self, layout_data):
+        S_matrix, X = layout_data
+        self.data['S'].append(S_matrix)
+        self.data['X'].append(X)
