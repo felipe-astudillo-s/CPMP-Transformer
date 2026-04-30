@@ -8,3 +8,4 @@ MODELS_FOLDER = PROJECT_ROOT / "models"
 HYPERPARAMETERS_FOLDER = MODELS_FOLDER / "hyperparameters"
 
 FRG_PATH = PROJECT_ROOT / "Codigo_C_solver" / "frg"
+FRG_LINUX_PATH = PROJECT_ROOT / "Codigo_C_solver" / "frg_linux"

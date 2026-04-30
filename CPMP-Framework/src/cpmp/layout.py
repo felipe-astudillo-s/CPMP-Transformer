@@ -125,7 +125,7 @@ class Layout:
 
     
 def read_file(file, H):
-    with open(file) as f:
+    with open(file, encoding='latin-1') as f:
         S, C = [int(x) for x in next(f).split()] # read first line
         stacks = []
         for line in f: # read rest of lines
@@ -242,7 +242,7 @@ def reachable_height(layout, i):
     else: return h
     
 def read_file(file, H):
-    with open(file) as f:
+    with open(file, encoding='utf-8') as f:
         S, C = [int(x) for x in next(f).split()] # read first line
         stacks = []
         for line in f: # read rest of lines

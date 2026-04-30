@@ -19,7 +19,11 @@ class Solver(ABC):
         steps_arr = []
 
         for filename in os.listdir(INSTANCE_FOLDER / folder):
+            if not filename.endswith('.dat'):
+                continue
             filepath = os.path.join(INSTANCE_FOLDER / folder, filename)
+            if not os.path.isfile(filepath):
+                continue
             solved, steps = self.solve_from_path(filepath, H, max_steps)
             solved_arr.append(solved)
             steps_arr.append(steps)

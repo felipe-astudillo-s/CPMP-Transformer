@@ -1,15 +1,25 @@
-from settings import INSTANCE_FOLDER, FRG_PATH
+from settings import INSTANCE_FOLDER, FRG_PATH, FRG_LINUX_PATH
 from solvers.solver import Solver
 from cpmp.layout import read_file
 from generation.adapters import *
 import subprocess
+import sys
 import os
 
 
-class FRGSolver(Solver): 
+def _windows_to_wsl_path(path):
+    s = str(path)
+    if len(s) >= 2 and s[1] == ':':
+        drive = s[0].lower()
+        rest = s[2:].replace('\\', '/')
+        return f'/mnt/{drive}{rest}'
+    return s.replace('\\', '/')
+
+
+class FRGSolver(Solver):
     def __init__(self):
         super().__init__("FRG")
-     
+
     def solve_from_path(self, instance_path, H, max_steps):
         layout = read_file(instance_path, H)
         pid = os.getpid()
@@ -18,13 +28,16 @@ class FRGSolver(Solver):
         try:
             self.lay2file(layout, filepath)
 
-            result = subprocess.run(
-                [FRG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignement", "2"],
-                check=True,
-                text=True,
-                capture_output=True
-            )
-            
+            if sys.platform == 'win32':
+                wsl_bin = _windows_to_wsl_path(FRG_LINUX_PATH)
+                wsl_file = _windows_to_wsl_path(filepath)
+                cmd = ["wsl", "-d", "Ubuntu", "--", wsl_bin,
+                       str(H), wsl_file, "1.2", str(max_steps), "0", "--no-assignement", "2"]
+            else:
+                cmd = [FRG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignement", "2"]
+
+            result = subprocess.run(cmd, check=True, text=True, capture_output=True)
+
             output_str = result.stdout.split('\t')[0].strip()
             if not output_str.isdigit():
                 return False, float('inf')
