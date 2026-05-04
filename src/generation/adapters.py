@@ -260,22 +260,23 @@ class TacticalStackMatrixAdapter(LayoutDataAdapter):
     Reutiliza la matriz S del StackMatrix4DAdapter (valor normalizado + flag de
     bloqueo) y expone un vector X de 5 dimensiones orientado a decisión táctica:
 
+        Todas las dimensiones están en [0, 1].
+
         [0] Sorted Status  (Caserta-Voß base):
-                1.0 si la pila NO está vacía y está completamente ordenada.
-                0.0 si hay desorden o si la pila está vacía.
-        [1] Free Space (Espacio disponible absoluto):
-                H - len(stack). Reemplaza la antigua métrica de % de llenado.
-        [2] Misplaced Count (Caserta-Voß):
-                # de contenedores estorbo en la pila (enteros, valor absoluto).
+                1.0 si la pila está completamente ordenada O está vacía.
+                0.0 si hay desorden interno.
+        [1] Free Space normalizado: (H - len) / H.
+                0.0 = pila llena, 1.0 = pila vacía.
+        [2] Misplaced Count normalizado: misplaced / len.
+                0.0 = ningún contenedor mal ubicado (o pila vacía).
+                1.0 = todos los contenedores están mal ubicados.
         [3] Top Element (Tierney-Pacino, poda):
                 Valor normalizado del contenedor superior (0-1). Si la pila está
                 vacía, se asigna 1.0 (equivalente a "infinito": acepta todo).
-        [4] Top Move Cost (Araya, lower-bound):
+        [4] Top Move Cost normalizado: {0→0.0, 1→0.5, 2→1.0}.
                 0.0 si la pila ya está ordenada (no hay que moverla).
-                1.0 si existe al menos un destino con espacio cuyo top >= top
-                    origen (movimiento limpio posible).
-                2.0 si todos los destinos con espacio tienen top < top origen
-                    (obligatorio hacer un movimiento sucio).
+                0.5 si existe al menos un destino con movimiento limpio posible.
+                1.0 si todos los destinos obligan a un movimiento sucio.
 
     NOTA: Este adaptador es puramente aditivo. No modifica ni sobreescribe a
     ningún adaptador existente — los modelos V0..V9 siguen funcionando igual.
@@ -346,6 +347,7 @@ class TacticalStackMatrixAdapter(LayoutDataAdapter):
     def get_X(layout: Layout, H: int, max_val: float):
         """
         Construye el vector X (S_len x 5) con las 5 dimensiones tácticas.
+        Todas las dimensiones están normalizadas al rango [0, 1].
 
         `max_val` se recibe como parámetro para garantizar la misma
         normalización que la usada en la matriz S (StackMatrix4DAdapter).
@@ -357,30 +359,31 @@ class TacticalStackMatrixAdapter(LayoutDataAdapter):
             stack = layout.stacks[i]
             stack_len = len(stack)
 
-            # [0] Sorted Status
-            if stack_len == 0:
-                X[i][0] = 0.0
+            # [0] Sorted Status (1.0 si ordenada o vacía) — ya es 0/1
+            X[i][0] = 1.0 if layout.is_sorted_stack(i) else 0.0
+
+            # [1] Free Space normalizado: (H - len) / H → [0, 1]
+            X[i][1] = float(H - stack_len) / H
+
+            # [2] Misplaced Count normalizado: misplaced / len → [0, 1]
+            # Si la pila está vacía no hay contenedores mal ubicados.
+            if stack_len > 0:
+                X[i][2] = float(
+                    TacticalStackMatrixAdapter.compute_misplaced_count(stack)
+                ) / stack_len
             else:
-                X[i][0] = 1.0 if layout.is_sorted_stack(i) else 0.0
+                X[i][2] = 0.0
 
-            # [1] Free Space (absoluto)
-            X[i][1] = float(H - stack_len)
-
-            # [2] Misplaced Count (absoluto)
-            X[i][2] = float(
-                TacticalStackMatrixAdapter.compute_misplaced_count(stack)
-            )
-
-            # [3] Top Element (normalizado, 1.0 si vacía)
+            # [3] Top Element (normalizado, 1.0 si vacía) — ya es [0, 1]
             if stack_len == 0:
                 X[i][3] = 1.0
             else:
                 X[i][3] = stack[-1] / max_val
 
-            # [4] Top Move Cost
+            # [4] Top Move Cost normalizado: {0, 1, 2} / 2 → {0.0, 0.5, 1.0}
             X[i][4] = TacticalStackMatrixAdapter.compute_top_move_cost(
                 layout, i, H
-            )
+            ) / 2.0
 
         return X
 
