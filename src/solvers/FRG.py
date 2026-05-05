@@ -6,20 +6,23 @@ import subprocess
 import os
 
 
-class FRGSolver(Solver): 
-    def __init__(self):
+class FRGSolver(Solver):
+    def __init__(self, beams=0):
         super().__init__("FRG")
-     
+        self.beams = beams  # 0 = greedy puro, >0 = BSG (beam search)
+
     def solve_from_path(self, instance_path, H, max_steps):
         layout = read_file(instance_path, H)
         pid = os.getpid()
         filepath = INSTANCE_FOLDER / f"tmp_{pid}.txt"
 
+        flag = "--no-assignement" if self.beams == 0 else "--compound"
+
         try:
             self.lay2file(layout, filepath)
 
             result = subprocess.run(
-                [FRG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignement", "2"],
+                [FRG_PATH, str(H), filepath, "1.2", str(max_steps), str(self.beams), flag, "2"],
                 check=True,
                 text=True,
                 capture_output=True
