@@ -9,16 +9,18 @@ from generation.adapters import *
 from concurrent.futures import ProcessPoolExecutor
 from functools import partial
 
-def greedy(layout, H, max_steps):
+def greedy(layout, H, max_steps, beams=0):
     pid = os.getpid()
     os.makedirs(INSTANCE_FOLDER, exist_ok=True)
     filepath = INSTANCE_FOLDER / f"tmp_{pid}.txt"
+
+    flag = "--no-assignment" if beams == 0 else "--compound"
 
     try:
         lay2file(layout, filename=filepath)
 
         result = subprocess.run(
-            [FRG_PATH, str(H), filepath, "1.2", str(max_steps), "0", "--no-assignment", "2"],
+            [FRG_PATH, str(H), filepath, "1.2", str(max_steps), str(beams), flag, "2"],
             check=True,
             text=True,
             capture_output=True
@@ -54,7 +56,7 @@ def get_feasible_moves(layout):
 
     return moves
     
-def get_best_moves(layout, H, max_steps):
+def get_best_moves(layout, H, max_steps, beams=0):
     moves = get_feasible_moves(layout)
     best_moves = []
     min_cost = float('inf')
@@ -62,26 +64,25 @@ def get_best_moves(layout, H, max_steps):
     for (i, j) in moves:
         lay_copy = copy.deepcopy(layout)
         lay_copy.move(i, j)
-        cost = greedy(lay_copy, H, max_steps)
+        cost = greedy(lay_copy, H, max_steps, beams=beams)
 
         if cost < min_cost:
             min_cost = cost
             best_moves = [(i, j)]
         elif cost == min_cost:
-            # Si hay empates en la jugada óptima, guarda ambas
             best_moves.append((i, j))
 
     return best_moves, cost
 
-def generate_data_from_file(filepath, H, max_steps, layout_cls, moves_cls):
+def generate_data_from_file(filepath, H, max_steps, layout_cls, moves_cls, beams=0):
     layout = read_instance(filepath, H)
-    if layout.unsorted_stacks == 0: 
+    if layout.unsorted_stacks == 0:
         return None
 
     layout_vec = layout_cls.layout_2_vec(layout, H)
     S = len(layout.stacks)
 
-    best_moves, cost = get_best_moves(layout, H, max_steps)
+    best_moves, cost = get_best_moves(layout, H, max_steps, beams=beams)
     if cost == float('inf'):
         return None
 
@@ -89,15 +90,14 @@ def generate_data_from_file(filepath, H, max_steps, layout_cls, moves_cls):
 
     return layout_vec, moves_vec, cost
 
-def generate_data(folder, H, max_steps, layout_adapter: LayoutDataAdapter, moves_adapter: MovesDataAdapter, output_name=None):
+def generate_data(folder, H, max_steps, layout_adapter: LayoutDataAdapter, moves_adapter: MovesDataAdapter, output_name=None, beams=0):
     filepaths = [os.path.join(INSTANCE_FOLDER / folder, f) for f in os.listdir(INSTANCE_FOLDER / folder)]
-    
-    # Extraemos las clases de las instancias recibidas
+
     l_cls = layout_adapter.__class__
     m_cls = moves_adapter.__class__
 
     with ProcessPoolExecutor() as executor:
-        task = partial(generate_data_from_file, H=H, max_steps=max_steps, layout_cls=l_cls, moves_cls=m_cls)
+        task = partial(generate_data_from_file, H=H, max_steps=max_steps, layout_cls=l_cls, moves_cls=m_cls, beams=beams)
         results = list(executor.map(task, filepaths))
 
     costs = []
