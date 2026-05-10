@@ -1,0 +1,10 @@
+{
+    "H": 12,
+    "C_dim": 2,
+    "X_dim": 5,
+    "d_model": 64,
+    "nhead": 4,
+    "num_layers": 4,
+    "ff_dim_multiplier": 2,
+    "dropout": 0.3
+}
