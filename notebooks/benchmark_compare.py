@@ -13,12 +13,12 @@ from settings import INSTANCE_FOLDER
 
 # ── Cargar modelos ────────────────────────────────────────────────────────────
 model_ale     = load_model(CPMPTransformer, 'v9_Original')
-model_robusto = load_model(CPMPTransformer, 'v9_ROBUSTO')
+model_robusto = load_model(CPMPTransformer, 'v9_dataBSG_250k')
 
 H_MODEL = model_ale.hyperparams['H']
 print(f"H_MODEL: {H_MODEL}")
 print(f"v9_Original     cargado - H={model_ale.hyperparams['H']}")
-print(f"v9_ROBUSTO cargado - H={model_robusto.hyperparams['H']}")
+print(f"v9_dataBSG_250k cargado - H={model_robusto.hyperparams['H']}")
 
 # ── Solvers ───────────────────────────────────────────────────────────────────
 class SafeModelSolver(ModelSolver):
