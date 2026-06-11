@@ -10,11 +10,10 @@ class ModelSolver(Solver):
         super().__init__("ModelSolver")
         self.model = model
 
-    def solve_from_path(self, instance_path, H, max_steps):
-        layout = read_file(instance_path, H)
+    def solve_from_layout(self, layout, H, max_steps):
         S = len(layout.stacks)
-
         visited_states = set()
+        device = next(self.model.parameters()).device
 
         with torch.no_grad():
             while not layout.is_sorted():
@@ -25,9 +24,9 @@ class ModelSolver(Solver):
                 for i in range(len(layout_data)):
                     val = layout_data[i]
                     if isinstance(val, (int, float)):
-                        layout_data[i] = torch.tensor([val])
+                        layout_data[i] = torch.tensor([val]).to(device)
                     else:
-                        layout_data[i] = torch.from_numpy(val).unsqueeze(0)
+                        layout_data[i] = torch.from_numpy(val).unsqueeze(0).to(device)
 
                 logits = self.model(*layout_data)
 
@@ -41,7 +40,6 @@ class ModelSolver(Solver):
                     r = best_index % (S - 1)
                     dst = r if r < src else r + 1
 
-                    # Calcular estado siguiente sin deepcopy
                     top = stacks[src][-1]
                     next_state = tuple(
                         tuple(stacks[k][:-1])          if k == src else
@@ -59,3 +57,7 @@ class ModelSolver(Solver):
 
         solved = layout.unsorted_stacks == 0
         return solved, layout.steps
+
+    def solve_from_path(self, instance_path, H, max_steps):
+        layout = read_file(instance_path, H)
+        return self.solve_from_layout(layout, H, max_steps)
